@@ -1,7 +1,9 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
+
 const app = express();
 dotenv.config();
 
@@ -23,9 +25,11 @@ app.get("/user/:username", async (req, res) => {
   try {
     const username = req.params.username;
 
+    // ✅ Launch Puppeteer with @sparticuz/chromium for Render
     const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"], // Required for Render
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless
     });
 
     const page = await browser.newPage();
