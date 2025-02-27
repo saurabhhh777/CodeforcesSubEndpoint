@@ -1,36 +1,31 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import puppeteer from "puppeteer-core";
-import chromium from "@sparticuz/chromium";
+import puppeteer from "puppeteer";
 const app = express();
 dotenv.config();
 
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
-app.get("/api", (req, res) => {
+app.get("/", (req, res) => {
   res.status(200).json({
-    message: "Hey Devs, Codeforces subendpoint is Working !",
+    message: "Hey Devs, Codeforces API is working!",
     examples: {
-      text: "Hit the url 👇 change the username name with your codeforces username or someone else !",
-      url: "",
+      text: "Hit the URL below and replace 'username' with a Codeforces username.",
+      url: "/user/yourCodeforcesUsername",
     },
     success: true,
   });
 });
 
-app.use("/user/:username", async (req, res) => {
+app.get("/user/:username", async (req, res) => {
   try {
-    const username = req.query.username;
+    const username = req.params.username;
 
     const browser = await puppeteer.launch({
-      args: chromium.args,
-      executablePath: isLocal
-        ? undefined // Let Puppeteer auto-download Chromium locally
-        : await chromium.executablePath(),
-      headless: chromium.headless,
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"], // Required for Render
     });
 
     const page = await browser.newPage();
@@ -52,7 +47,7 @@ app.use("/user/:username", async (req, res) => {
 
     return res.status(200).json({
       contributions,
-      message: "User is done!",
+      message: "User data scraped successfully!",
       success: true,
     });
   } catch (error) {
@@ -64,7 +59,8 @@ app.use("/user/:username", async (req, res) => {
   }
 });
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+// ✅ Make sure the app listens on the correct port
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
