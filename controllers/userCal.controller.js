@@ -1,88 +1,48 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 
-export const calendarAllData = async(req,res) => {
-    try {
+const isLocal = process.env.NODE_ENV === 'development';
 
-        const username = req.params.username;
+export const calendarAllData = async (req, res) => {
+  try {
+    const username = req.query.username;
 
-        const browser = await puppeteer.launch({ headless: false });
-        const page = await browser.newPage();
-      
-        const url = `https://codeforces.com/profile/${username}`;
-        await page.goto(url, { waitUntil: 'networkidle2' });
-      
-        // Wait for the rect.day elements to appear
-        await page.waitForSelector("rect.day");
-      
-        const contributions = await page.evaluate(() => {
-          const rects = document.querySelectorAll("rect.day");
-      
-          return Array.from(rects)
-            // Filter only the ones that have data-items (and optionally check > 0)
-            .filter(rect => {
-              const items = rect.getAttribute("data-items");
-              return items && Number(items) > 0; 
-            })
-            // Then map those filtered elements to the data we want
-            .map(rect => ({
-              date: rect.getAttribute("data-date"),
-              items: rect.getAttribute("data-items"),
-            }));
-        });
+    const browser = await puppeteer.launch({
+      args: chromium.args,
+      executablePath: isLocal
+        ? undefined // Let Puppeteer auto-download Chromium locally
+        : await chromium.executablePath(),
+      headless: chromium.headless
+    });
 
-        return res.status(200).json({
-            contributions,
-            message:"User is done !",
-            success:true
-        });
-    
-        console.log(contributions);
-      
-        await browser.close();
+    const page = await browser.newPage();
+    const url = `https://codeforces.com/profile/${username}`;
+    await page.goto(url, { waitUntil: 'networkidle2' });
 
-    } catch (error) {
-        console.log(error);
-        return res.status(500).json({
-            message:"Internal Server Error",
-            success:false
-        });
-    }
-}
+    await page.waitForSelector("rect.day", { timeout: 5000 });
 
+    const contributions = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll("rect.day"))
+        .filter(rect => Number(rect.getAttribute("data-items") || 0) > 0)
+        .map(rect => ({
+          date: rect.getAttribute("data-date"),
+          items: rect.getAttribute("data-items"),
+        }));
+    });
 
+    await browser.close();
 
+    return res.status(200).json({
+      contributions,
+      message: "User is done!",
+      success: true
+    });
 
-
-
-// async function scrape() {
-//   const browser = await puppeteer.launch({ headless: false });
-//   const page = await browser.newPage();
-
-//   const url = "https://codeforces.com/profile/serialcomder";
-//   await page.goto(url, { waitUntil: 'networkidle2' });
-
-//   // Wait for the rect.day elements to appear
-//   await page.waitForSelector("rect.day");
-
-//   const contributions = await page.evaluate(() => {
-//     const rects = document.querySelectorAll("rect.day");
-
-//     return Array.from(rects)
-//       // Filter only the ones that have data-items (and optionally check > 0)
-//       .filter(rect => {
-//         const items = rect.getAttribute("data-items");
-//         return items && Number(items) > 0; 
-//       })
-//       // Then map those filtered elements to the data we want
-//       .map(rect => ({
-//         date: rect.getAttribute("data-date"),
-//         items: rect.getAttribute("data-items"),
-//       }));
-//   });
-
-//   console.log(contributions);
-
-//   await browser.close();
-// }
-
-// scrape();
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "Internal Server Error",
+      success: false
+    });
+  }
+};
