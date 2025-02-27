@@ -9,7 +9,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
-app.get("/", (req, res) => {
+app.get("/api", (req, res) => {
   res.status(200).json({
     message: "Hey Devs, Codeforces subendpoint is Working !",
     examples:{
