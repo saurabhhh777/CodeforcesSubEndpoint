@@ -3,39 +3,37 @@ import cors from "cors";
 import dotenv from "dotenv";
 import compression from "compression";
 import cache from "memory-cache";
-import puppeteer from "puppeteer-core"; // Use puppeteer-core instead of full Puppeteer
-import chromium from "@sparticuz/chromium"; // Lightweight Chromium for serverless environments
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
+import puppeteerExtra from "puppeteer-extra"; // Fix: Use puppeteer-extra
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
-import consoleStamp from "console-stamp"; // For timestamped logs
+import consoleStamp from "console-stamp";
 
 dotenv.config();
-
 const app = express();
 app.use(express.json());
 app.use(cors());
 app.use(compression()); // Enable response compression
-
 consoleStamp(console, { format: "[yyyy-mm-dd HH:MM:ss]" });
 
-const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes cache
-const LAUNCH_OPTIONS = {
-  args: chromium.args,
-  defaultViewport: chromium.defaultViewport,
-  executablePath: await chromium.executablePath, // Use Render-compatible Chromium
-  headless: chromium.headless,
-};
+puppeteerExtra.use(StealthPlugin()); // Fix: Apply Stealth Plugin
 
-// ✅ Use a single browser instance for all requests
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes cache
 let browser;
 
 async function getBrowserInstance() {
   if (!browser) {
-    browser = await puppeteer.launch(LAUNCH_OPTIONS);
+    const executablePath = await chromium.executablePath; // Fix: Fetch dynamically
+    browser = await puppeteerExtra.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: executablePath || "/usr/bin/chromium-browser", // Fallback path
+      headless: chromium.headless,
+    });
   }
   return browser;
 }
 
-// Middleware to check cache before scraping
 const cacheMiddleware = (req, res, next) => {
   const key = req.originalUrl;
   const cachedResponse = cache.get(key);
@@ -57,7 +55,6 @@ app.get("/", (req, res) => {
   });
 });
 
-// Scrape Codeforces user contributions with Puppeteer
 app.get("/user/:username", cacheMiddleware, async (req, res) => {
   try {
     const username = req.params.username;
@@ -68,7 +65,6 @@ app.get("/user/:username", cacheMiddleware, async (req, res) => {
     const browser = await getBrowserInstance();
     const page = await browser.newPage();
 
-    // Set User-Agent and headers to bypass bot detection
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
     );
@@ -78,10 +74,8 @@ app.get("/user/:username", cacheMiddleware, async (req, res) => {
 
     await page.goto(url, { waitUntil: "networkidle2" });
 
-    // Wait for contributions to load
     await page.waitForSelector("rect.day");
 
-    // Extract contribution data
     const contributions = await page.evaluate(() => {
       return Array.from(document.querySelectorAll("rect.day"))
         .filter((rect) => rect.getAttribute("data-items") && Number(rect.getAttribute("data-items")) > 0)
@@ -99,7 +93,6 @@ app.get("/user/:username", cacheMiddleware, async (req, res) => {
       success: true,
     };
 
-    // Store response in cache
     cache.put(req.originalUrl, response, CACHE_DURATION);
 
     return res.status(200).json(response);
@@ -113,14 +106,19 @@ app.get("/user/:username", cacheMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Graceful shutdown - Close Puppeteer browser on exit
+// ✅ Fix: Graceful shutdown for Render
 process.on("SIGINT", async () => {
   console.log("Closing browser...");
   if (browser) await browser.close();
   process.exit(0);
 });
 
-// ✅ Start the server
+process.on("SIGTERM", async () => {
+  console.log("Render shutting down service...");
+  if (browser) await browser.close();
+  process.exit(0);
+});
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
