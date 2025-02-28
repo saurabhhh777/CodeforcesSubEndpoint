@@ -39,10 +39,24 @@ app.get("/user/:username", async (req, res) => {
     const url = `https://codeforces.com/profile/${username}`;
     console.log("Navigating to:", url);
     
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
     console.log("Page loaded successfully.");
 
-    await page.waitForSelector("rect.day", { timeout: 10000 });
+    await page.waitForTimeout(5000); // Wait extra 5 sec before checking
+    const hasContributions = await page.evaluate(() => {
+      return document.querySelector("rect.day") !== null;
+    });
+
+    if (!hasContributions) {
+      console.error("No contributions found. The selector might be incorrect or missing.");
+      await browser.close();
+      return res.status(404).json({
+        message: "No contributions found or user does not exist.",
+        success: false,
+      });
+    }
+
+    await page.waitForSelector("rect.day", { timeout: 30000 });
     console.log("Selector found. Extracting contributions...");
 
     const contributions = await page.evaluate(() => {
