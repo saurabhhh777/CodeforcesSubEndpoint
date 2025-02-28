@@ -25,6 +25,8 @@ app.get("/user/:username", async (req, res) => {
   try {
     const username = req.params.username;
 
+    console.log("Username :",username);
+
     // ✅ Launch Puppeteer with @sparticuz/chromium for Render
     const browser = await puppeteer.launch({
       args: chromium.args,
@@ -33,6 +35,9 @@ app.get("/user/:username", async (req, res) => {
     });
 
     const page = await browser.newPage();
+
+    console.log("Page data : ",page);
+    
     const url = `https://codeforces.com/profile/${username}`;
     await page.goto(url, { waitUntil: "networkidle2" });
 
@@ -46,6 +51,8 @@ app.get("/user/:username", async (req, res) => {
           items: rect.getAttribute("data-items"),
         }));
     });
+
+    console.log("Contributions :",contributions);
 
     await browser.close();
 
