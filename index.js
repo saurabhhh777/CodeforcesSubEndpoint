@@ -24,24 +24,26 @@ app.get("/", (req, res) => {
 app.get("/user/:username", async (req, res) => {
   try {
     const username = req.params.username;
+    console.log("Fetching data for username:", username);
 
-    console.log("Username :",username);
-
-    // ✅ Launch Puppeteer with @sparticuz/chromium for Render
+    // Launch Puppeteer with Chromium
     const browser = await puppeteer.launch({
       args: chromium.args,
       executablePath: await chromium.executablePath(),
-      headless: chromium.headless
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();
-
-    console.log("Page data : ",page);
+    console.log("Puppeteer launched successfully.");
     
     const url = `https://codeforces.com/profile/${username}`;
-    await page.goto(url, { waitUntil: "networkidle2" });
+    console.log("Navigating to:", url);
+    
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+    console.log("Page loaded successfully.");
 
-    await page.waitForSelector("rect.day", { timeout: 5000 });
+    await page.waitForSelector("rect.day", { timeout: 10000 });
+    console.log("Selector found. Extracting contributions...");
 
     const contributions = await page.evaluate(() => {
       return Array.from(document.querySelectorAll("rect.day"))
@@ -52,9 +54,10 @@ app.get("/user/:username", async (req, res) => {
         }));
     });
 
-    console.log("Contributions :",contributions);
+    console.log("Contributions extracted:", contributions);
 
     await browser.close();
+    console.log("Browser closed.");
 
     return res.status(200).json({
       contributions,
@@ -62,7 +65,7 @@ app.get("/user/:username", async (req, res) => {
       success: true,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Error scraping user data:", error);
     return res.status(500).json({
       message: "Internal Server Error",
       success: false,
@@ -70,7 +73,7 @@ app.get("/user/:username", async (req, res) => {
   }
 });
 
-// ✅ Make sure the app listens on the correct port
+// Start the server
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
