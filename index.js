@@ -1,13 +1,33 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { fromURL } from "cheerio";
+import compression from "compression";
+import cache from "memory-cache";
+import puppeteer from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
 
-const app = express();
 dotenv.config();
 
+const app = express();
 app.use(express.json());
 app.use(cors());
+app.use(compression()); // Enable response compression
+puppeteer.use(StealthPlugin()); // Enable stealth mode
+
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes cache
+
+// Middleware to check cache before scraping
+const cacheMiddleware = (req, res, next) => {
+  const key = req.originalUrl;
+  const cachedResponse = cache.get(key);
+
+  if (cachedResponse) {
+    console.log(`Serving from cache: ${key}`);
+    return res.status(200).json(cachedResponse);
+  }
+
+  next();
+};
 
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -20,41 +40,56 @@ app.get("/", (req, res) => {
   });
 });
 
-// Function to scrape Codeforces user contributions
-app.get("/user/:username", async (req, res) => {
+// Scrape Codeforces user contributions with Puppeteer
+app.get("/user/:username", cacheMiddleware, async (req, res) => {
   try {
     const username = req.params.username;
     const url = `https://codeforces.com/profile/${username}`;
 
     console.log(`Scraping Codeforces profile: ${url}`);
 
-    // Fetch HTML using Cheerio
-    const $ = await fromURL(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
+    // Launch Puppeteer with stealth mode
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
-    // Extract contributions from the profile page
-    const contributions = [];
-    $("rect.day").each((_, element) => {
-      const date = $(element).attr("data-date");
-      const items = $(element).attr("data-items");
+    const page = await browser.newPage();
 
-      if (date && items && Number(items) > 0) {
-        contributions.push({ date, items: Number(items) });
-      }
+    // Set User-Agent to mimic a real browser
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
+    );
+
+    await page.goto(url, { waitUntil: "networkidle2" });
+
+    // Wait for contributions to load
+    await page.waitForSelector("rect.day");
+
+    // Extract contribution data
+    const contributions = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll("rect.day"))
+        .filter((rect) => rect.getAttribute("data-items") && Number(rect.getAttribute("data-items")) > 0)
+        .map((rect) => ({
+          date: rect.getAttribute("data-date"),
+          items: rect.getAttribute("data-items"),
+        }));
     });
+
+    await browser.close();
 
     console.log("Scraped data: ", contributions);
 
-    return res.status(200).json({
+    const response = {
       contributions,
       message: "User data fetched successfully!",
       success: true,
-    });
+    };
+
+    // Store response in cache
+    cache.put(req.originalUrl, response, CACHE_DURATION);
+
+    return res.status(200).json(response);
 
   } catch (error) {
     console.error("Error scraping Codeforces:", error);
