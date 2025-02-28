@@ -42,7 +42,7 @@ app.get("/user/:username", async (req, res) => {
     await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
     console.log("Page loaded successfully.");
 
-    await page.waitForTimeout(5000); // Wait extra 5 sec before checking
+    await new Promise(resolve => setTimeout(resolve, 5000)); // Wait extra 5 sec before checking
     const hasContributions = await page.evaluate(() => {
       return document.querySelector("rect.day") !== null;
     });
