@@ -6,11 +6,11 @@
         "use": "@vercel/node"
       }
     ],
-    "functions": {
-      "index.js": {
-        "runtime": "nodejs18.x",
-        "maxDuration": 60
+    "routes": [
+      {
+        "src": "/(.*)",
+        "dest": "/index.js"
       }
-    }
+    ]
   }
   
