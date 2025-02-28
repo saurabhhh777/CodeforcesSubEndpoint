@@ -1,10 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import puppeteer from "puppeteer-extra";
-import StealthPlugin from "puppeteer-extra-plugin-stealth";
-
-puppeteer.use(StealthPlugin());
+import { fromURL } from "cheerio";
 
 const app = express();
 dotenv.config();
@@ -31,37 +28,27 @@ app.get("/user/:username", async (req, res) => {
 
     console.log(`Scraping Codeforces profile: ${url}`);
 
-    // Launch Puppeteer with stealth mode
-    const browser = await puppeteer.launch({
-      headless: "new", // Runs in headless mode (change to false to see browser)
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    // Fetch HTML using Cheerio
+    const $ = await fromURL(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
     });
 
-    const page = await browser.newPage();
-    
-    // Set User-Agent to mimic a real browser
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
-    );
+    // Extract contributions from the profile page
+    const contributions = [];
+    $("rect.day").each((_, element) => {
+      const date = $(element).attr("data-date");
+      const items = $(element).attr("data-items");
 
-    await page.goto(url, { waitUntil: "networkidle2" });
-
-    // Wait for contributions to load
-    await page.waitForSelector("rect.day");
-
-    // Extract contribution data
-    const contributions = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll("rect.day"))
-        .filter((rect) => rect.getAttribute("data-items") && Number(rect.getAttribute("data-items")) > 0)
-        .map((rect) => ({
-          date: rect.getAttribute("data-date"),
-          items: rect.getAttribute("data-items"),
-        }));
+      if (date && items && Number(items) > 0) {
+        contributions.push({ date, items: Number(items) });
+      }
     });
 
-    await browser.close();
-
-    console.log("Scraped data : ", contributions);  
+    console.log("Scraped data: ", contributions);
 
     return res.status(200).json({
       contributions,
@@ -72,7 +59,7 @@ app.get("/user/:username", async (req, res) => {
   } catch (error) {
     console.error("Error scraping Codeforces:", error);
     return res.status(500).json({
-      message: "Internal Server Error",
+      message: "Failed to fetch Codeforces data. The site might be blocking requests.",
       success: false,
     });
   }
